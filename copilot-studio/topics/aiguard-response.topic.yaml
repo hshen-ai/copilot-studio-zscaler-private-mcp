@@ -1,0 +1,44 @@
+# Topic "AI Guard - response": every generated answer (OnGeneratedResponse) is held back
+# (System.ContinueResponse = false), checked with Zscaler AI Guard (direction OUT), and only then sent.
+# Gate on action = "BLOCK" (or no verdict at all), NOT on action <> "ALLOW": a policy with no response
+# detectors returns action = null for OUT, and "<> ALLOW" would withhold every answer.
+kind: AdaptiveDialog
+beginDialog:
+  kind: OnGeneratedResponse
+  id: main
+  actions:
+    - kind: SetVariable
+      id: holdResponse_01
+      variable: System.ContinueResponse
+      value: =false
+
+    - kind: InvokeConnectorAction
+      id: aiguardOut_01
+      connectionReference: {{CONNECTION_REFERENCE}}
+      connectionProperties:
+        mode: Maker
+      operationId: ResolveAndExecutePolicy
+      input:
+        binding:
+          direction: OUT
+          content: =System.Response.FormattedText
+          user: =If(IsBlank(System.User.PrincipalName), "anonymous", System.User.PrincipalName)
+          transactionId: =Global.AIGuardTx
+      output:
+        kind: SingleVariableOutputBinding
+        variable: init:Topic.Verdict
+
+    - kind: ConditionGroup
+      id: verdictOut_01
+      conditions:
+        - id: verdictOut_allow
+          condition: =Topic.Verdict.action <> "BLOCK" && !IsBlank(Topic.Verdict.transactionId)
+          actions:
+            - kind: SendActivity
+              id: sendAllowedOut_01
+              activity: "{System.Response.FormattedText}"
+
+      elseActions:
+        - kind: SendActivity
+          id: sendBlockOut_01
+          activity: "The answer was withheld by Zscaler AI Guard (transaction {Topic.Verdict.transactionId})."

@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Copilot Studio agent — private MCP server, Zscaler ZIA egress, Zscaler AI Guard</title>
+<style>
+  @page { size: A4 landscape; margin: 12mm; }
+  :root { --ink:#1d2433; --muted:#5b6475; --line:#c9d1de; --ms:#0f6cbd; --zs:#2160e0; --az:#0078d4;
+          --ok:#1a7f4b; --warn:#b42318; --bg:#f6f8fb; }
+  * { box-sizing: border-box; }
+  body { font-family: "Segoe UI", -apple-system, Helvetica, Arial, sans-serif; color: var(--ink); margin: 0;
+         font-size: 11.5px; line-height: 1.45; }
+  header { padding: 4px 0 10px; border-bottom: 2px solid var(--zs); margin-bottom: 10px; }
+  h1 { font-size: 19px; margin: 0 0 4px; }
+  .sub { color: var(--muted); }
+  .disclaimer { font-size: 10px; color: var(--muted); margin-top: 6px; }
+  svg { width: 100%; height: auto; display: block; }
+  .page2 { page-break-before: always; }
+  h2 { font-size: 14px; margin: 14px 0 6px; color: var(--zs); }
+  ol.steps { margin: 0; padding-left: 20px; columns: 2; column-gap: 28px; }
+  ol.steps li { break-inside: avoid; margin: 0 0 7px; }
+  table { border-collapse: collapse; width: 100%; font-size: 10.5px; }
+  th, td { border: 1px solid var(--line); padding: 4px 6px; text-align: left; vertical-align: top; }
+  th { background: var(--bg); }
+  code { font-family: Menlo, Consolas, monospace; font-size: 10px; background: var(--bg); padding: 0 3px; border-radius: 3px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Copilot Studio agent: private MCP server, Zscaler ZIA egress, Zscaler AI Guard</h1>
+  <div class="sub">One controlled path to the Internet — every prompt, tool call and answer checked by AI Guard.</div>
+  <div class="disclaimer">Personal work by Henry Shen — not an official Zscaler solution, not supported by Zscaler, for educational purposes only. See LICENSE and NOTICE.md.</div>
+</header>
+
+<svg viewBox="0 0 1180 560" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#1d2433"/></marker>
+    <marker id="z" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#2160e0"/></marker>
+    <marker id="r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#b42318"/></marker>
+  </defs>
+  <style>
+    .box{fill:#fff;stroke:#c9d1de;stroke-width:1.5;rx:10}
+    .t{font-size:14px;font-weight:600;fill:#1d2433}
+    .s{font-size:11.5px;fill:#5b6475}
+    .n{font-size:12px;font-weight:700;fill:#fff}
+    .lbl{font-size:11px;fill:#1d2433}
+    .zl{font-size:11px;fill:#2160e0}
+  </style>
+
+  <!-- zones -->
+  <rect x="10" y="40" width="330" height="500" rx="14" fill="#eef5fd" stroke="#0f6cbd" stroke-dasharray="5 4"/>
+  <text x="24" y="62" class="t" fill="#0f6cbd">Microsoft Copilot Studio (SaaS)</text>
+  <rect x="360" y="40" width="480" height="500" rx="14" fill="#f0f6ff" stroke="#0078d4" stroke-dasharray="5 4"/>
+  <text x="374" y="62" class="t" fill="#0078d4">Your Azure VNet — no public endpoint</text>
+  <rect x="860" y="40" width="310" height="500" rx="14" fill="#f2f6ff" stroke="#2160e0" stroke-dasharray="5 4"/>
+  <text x="874" y="62" class="t" fill="#2160e0">Zscaler &amp; Internet</text>
+
+  <!-- user -->
+  <rect x="30" y="80" width="290" height="58" class="box"/>
+  <text x="46" y="104" class="t">User (signed in with Entra ID)</text>
+  <text x="46" y="124" class="s">"Search the web: …"</text>
+
+  <!-- agent -->
+  <rect x="30" y="165" width="290" height="300" class="box"/>
+  <text x="46" y="190" class="t">Agent (generative orchestration)</text>
+  <text x="46" y="208" class="s">web browsing, model knowledge, public</text>
+  <text x="46" y="223" class="s">website knowledge: OFF (+ data policy)</text>
+  <rect x="46" y="240" width="258" height="52" rx="8" fill="#f6f8fb" stroke="#2160e0"/>
+  <text x="58" y="261" class="lbl">topic "AI Guard - prompt"</text>
+  <text x="58" y="279" class="s">OnActivity · IN · user = UPN · tx = UUID</text>
+  <rect x="46" y="305" width="258" height="52" rx="8" fill="#f6f8fb" stroke="#c9d1de"/>
+  <text x="58" y="326" class="lbl">MCP tool "Private web search"</text>
+  <text x="58" y="344" class="s">custom connector · x-api-key</text>
+  <rect x="46" y="370" width="258" height="52" rx="8" fill="#f6f8fb" stroke="#2160e0"/>
+  <text x="58" y="391" class="lbl">topic "AI Guard - response"</text>
+  <text x="58" y="409" class="s">OnGeneratedResponse · OUT · user = UPN</text>
+  <text x="46" y="450" class="s">Managed Environment + NetworkInjection policy</text>
+  <circle cx="290" cy="331" r="10" fill="#1d2433"/><text x="286" y="335" class="n">2</text>
+
+  <!-- delegated subnet -->
+  <rect x="380" y="85" width="440" height="70" class="box"/>
+  <text x="396" y="110" class="t">Delegated subnet (pp-delegated)</text>
+  <text x="396" y="130" class="s">every connector call of the environment leaves here</text>
+  <text x="396" y="146" class="s">private DNS zone → internal load balancer</text>
+
+  <!-- ACA -->
+  <rect x="380" y="185" width="440" height="200" class="box"/>
+  <text x="396" y="210" class="t">Internal Container Apps — websearch-mcp</text>
+  <text x="396" y="228" class="s">MCP over Streamable HTTP · tool web_search</text>
+  <rect x="396" y="243" width="200" height="56" rx="8" fill="#f6f8fb" stroke="#2160e0"/>
+  <text x="408" y="265" class="lbl">AI Guard: tool INPUT</text>
+  <text x="408" y="283" class="s">query · fail-closed</text>
+  <rect x="606" y="243" width="200" height="56" rx="8" fill="#f6f8fb" stroke="#2160e0"/>
+  <text x="618" y="265" class="lbl">AI Guard: tool OUTPUT</text>
+  <text x="618" y="283" class="s">each result · drop flagged</text>
+  <rect x="396" y="312" width="410" height="56" rx="8" fill="#f6f8fb" stroke="#c9d1de"/>
+  <text x="408" y="334" class="lbl">HTTPS_PROXY = ZIA explicit proxy</text>
+  <text x="408" y="352" class="s">Zscaler root CA in the image (SSL inspection)</text>
+
+  <!-- NAT / NSG -->
+  <rect x="380" y="410" width="440" height="110" class="box"/>
+  <text x="396" y="435" class="t">NAT gateway + NSG</text>
+  <text x="396" y="455" class="s">one static public IP = ZIA Static IP Location</text>
+  <text x="396" y="473" class="s">NSG: Internet allowed ONLY to the ZIA proxy</text>
+  <text x="396" y="491" class="s" fill="#b42318">direct Internet → denied (verify/02 control row)</text>
+
+  <!-- ZIA -->
+  <rect x="880" y="85" width="270" height="110" class="box"/>
+  <text x="896" y="110" class="t">Zscaler AI Guard (DAS API)</text>
+  <text x="896" y="130" class="s">resolve-and-execute-policy (agent)</text>
+  <text x="896" y="146" class="s">execute-policy (MCP server)</text>
+  <text x="896" y="162" class="s">logs user + transaction</text>
+  <rect x="880" y="285" width="270" height="90" class="box"/>
+  <text x="896" y="310" class="t">Zscaler Internet Access</text>
+  <text x="896" y="330" class="s">explicit proxy · Location = NAT IP</text>
+  <text x="896" y="346" class="s">SSL inspection · Web Insights</text>
+  <rect x="880" y="420" width="270" height="70" class="box"/>
+  <text x="896" y="445" class="t">Tavily search API</text>
+  <text x="896" y="465" class="s">api.tavily.com</text>
+
+  <!-- flows -->
+  <line x1="175" y1="138" x2="175" y2="163" stroke="#1d2433" stroke-width="1.8" marker-end="url(#a)"/>
+  <circle cx="160" cy="151" r="10" fill="#1d2433"/><text x="156" y="155" class="n">0</text>
+  <!-- 1 prompt to AI Guard (via delegated subnet) -->
+  <path d="M304,262 C340,262 340,118 378,118" fill="none" stroke="#2160e0" stroke-width="1.8" marker-end="url(#z)"/>
+  <path d="M820,108 L878,108" fill="none" stroke="#2160e0" stroke-width="1.8" marker-end="url(#z)"/>
+  <circle cx="348" cy="200" r="10" fill="#2160e0"/><text x="344" y="204" class="n">1</text>
+  <!-- 2/3 MCP call -->
+  <path d="M304,330 C350,330 350,140 378,140" fill="none" stroke="#1d2433" stroke-width="1.8" marker-end="url(#a)"/>
+  <line x1="600" y1="155" x2="600" y2="183" stroke="#1d2433" stroke-width="1.8" marker-end="url(#a)"/>
+  <circle cx="352" cy="300" r="10" fill="#1d2433"/><text x="348" y="304" class="n">3</text>
+  <!-- 4/6 tool scans to AI Guard -->
+  <path d="M806,270 C850,270 850,160 878,160" fill="none" stroke="#2160e0" stroke-width="1.8" marker-end="url(#z)"/>
+  <circle cx="850" cy="225" r="10" fill="#2160e0"/><text x="846" y="229" class="n">4</text>
+  <!-- 5 egress -->
+  <line x1="600" y1="368" x2="600" y2="408" stroke="#1d2433" stroke-width="1.8" marker-end="url(#a)"/>
+  <path d="M820,450 C850,450 850,330 878,330" fill="none" stroke="#1d2433" stroke-width="1.8" marker-end="url(#a)"/>
+  <line x1="1015" y1="375" x2="1015" y2="418" stroke="#1d2433" stroke-width="1.8" marker-end="url(#a)"/>
+  <circle cx="850" cy="395" r="10" fill="#1d2433"/><text x="846" y="399" class="n">5</text>
+  <!-- denied direct -->
+  <path d="M820,505 C850,505 860,520 878,505" fill="none" stroke="#b42318" stroke-width="1.6" stroke-dasharray="4 3" marker-end="url(#r)"/>
+  <text x="826" y="532" class="s" fill="#b42318">✕ direct</text>
+  <!-- 7 response to AI Guard -->
+  <path d="M304,396 C345,396 345,128 378,128" fill="none" stroke="#2160e0" stroke-width="1.8" stroke-dasharray="6 3" marker-end="url(#z)"/>
+  <circle cx="338" cy="430" r="10" fill="#2160e0"/><text x="334" y="434" class="n">7</text>
+  <text x="380" y="78" class="zl">(1, 7: AI Guard connector calls also leave from the delegated subnet)</text>
+  <circle cx="796" cy="243" r="10" fill="#2160e0"/><text x="792" y="247" class="n">6</text>
+</svg>
+
+<div class="page2">
+<h2>The flow, step by step</h2>
+<ol class="steps" start="0">
+  <li><b>Sign-in.</b> The agent requires Microsoft authentication, so Copilot Studio knows the user
+      (<code>System.User.PrincipalName</code>). Anonymous channels are refused.</li>
+  <li><b>Prompt check.</b> Topic <i>AI Guard - prompt</i> runs on every message <i>before</i> generative
+      orchestration and calls AI Guard <code>resolve-and-execute-policy</code> directly through a custom
+      connector: <code>direction IN</code>, <code>user</code> = UPN, <code>transactionId</code> = a new UUID.
+      <code>BLOCK</code> → "Your message was blocked by Zscaler AI Guard (transaction …)" and the turn ends.</li>
+  <li><b>Orchestration.</b> Generative orchestration picks the MCP tool. Built-in web search, model
+      knowledge and public-website knowledge are off — and blocked by the environment's data policy —
+      so Internet questions can only be answered through the tool.</li>
+  <li><b>Private reach.</b> The tool is a custom connector to the MCP server's internal FQDN. Through the
+      environment's NetworkInjection enterprise policy (Managed Environment), the call leaves from the
+      delegated subnet; a private DNS zone resolves the name to the internal load balancer. The MCP server
+      has no public IP and no public DNS record, and requires an API key.</li>
+  <li><b>Tool input check.</b> The MCP server sends the model-chosen query to AI Guard
+      (<code>execute-policy</code>). Blocked or no verdict → no search.</li>
+  <li><b>Egress through ZIA.</b> The search goes to Tavily through the ZIA explicit proxy from the NAT
+      gateway's static IP (a ZIA Location). The NSG denies every other Internet destination.</li>
+  <li><b>Tool output check.</b> Every result is checked as model input (indirect prompt injection);
+      flagged results are dropped before they reach the model.</li>
+  <li><b>Response check.</b> Topic <i>AI Guard - response</i> holds the generated answer
+      (<code>System.ContinueResponse = false</code>), checks it with <code>direction OUT</code> for the same
+      user, and sends it only if it is not blocked.</li>
+</ol>
+
+<div class="grid">
+<div>
+<h2>What proves it (verify/)</h2>
+<table>
+  <tr><th>Check</th><th>Control row</th><th>Pass row</th></tr>
+  <tr><td>01 private MCP</td><td>no public DNS; TCP 443 from Internet fails; /mcp without key → 401</td><td>initialize + tools/list from inside the VNet</td></tr>
+  <tr><td>02 ZIA-only egress</td><td>direct HTTPS from the subnet times out</td><td>same request via ZIA → 200; tool returns results</td></tr>
+  <tr><td>03 AI Guard API</td><td>injection → BLOCK; non-UUID tx rejected</td><td>benign → ALLOW; user + UUID accepted via a match rule</td></tr>
+  <tr><td>04 agent, signed in</td><td>injection → blocked by AI Guard</td><td>hi → Hello World; web question → answer with URLs</td></tr>
+  <tr><td>05 configuration</td><td colspan="2">auth, publish status, orchestration, knowledge/browsing off, Managed Environment, VNet link, billing, data policy</td></tr>
+  <tr><td>06 caller subnet</td><td colspan="2">MCP server log: Copilot Studio's calls from the delegated subnet</td></tr>
+  <tr><td>07 transcripts</td><td colspan="2">conversation transcripts in Dataverse (Bot Transcript Viewer role)</td></tr>
+</table>
+</div>
+<div>
+<h2>Design choices</h2>
+<table>
+  <tr><th>Choice</th><th>Why</th></tr>
+  <tr><td>Classic agent via Dataverse API</td><td>agents created in the new designer (cliagent) cannot be called by the Copilot Studio API, so they cannot be verified programmatically</td></tr>
+  <tr><td>API key, not OAuth, on the MCP connector</td><td>OAuth token requests do not go through the VNet</td></tr>
+  <tr><td>AI Guard called directly by Copilot Studio</td><td>prompt and answer are checked where they exist, with the user's identity</td></tr>
+  <tr><td>Gate on <code>action = "BLOCK"</code></td><td>a policy without response detectors returns <code>null</code> for OUT</td></tr>
+  <tr><td>Fail closed everywhere</td><td>no verdict, no answer: attribution and control are the point</td></tr>
+  <tr><td>Custom connectors in "General"</td><td>a Business-classified connector makes every publish fail (DLP)</td></tr>
+</table>
+</div>
+</div>
+</div>
+</body>
+</html>

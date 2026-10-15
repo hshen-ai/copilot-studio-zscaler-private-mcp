@@ -1,0 +1,45 @@
+# Topic "AI Guard - prompt": every user message (OnActivity, before generative orchestration) is checked
+# with Zscaler AI Guard (direction IN). Blocked -> fixed refusal with the AI Guard transaction id, and the
+# turn ends. A per-turn UUID (Global.AIGuardTx) is sent as transactionId by both checks of a turn; AI Guard
+# returns its OWN transaction id (shown in the refusal) and does not echo the caller's UUID back.
+# user = the signed-in user's UPN, shown in AI Guard's logs. System.User.* exists only when the agent
+# requires sign-in: with "No authentication" this topic fails to publish (IdentifierNotRecognized).
+kind: AdaptiveDialog
+beginDialog:
+  kind: OnActivity
+  id: main
+  type: Message
+  actions:
+    - kind: SetVariable
+      id: newTx_01
+      variable: Global.AIGuardTx
+      value: =Text(GUID())
+
+    - kind: InvokeConnectorAction
+      id: aiguardIn_01
+      connectionReference: {{CONNECTION_REFERENCE}}
+      connectionProperties:
+        mode: Maker
+      operationId: ResolveAndExecutePolicy
+      input:
+        binding:
+          direction: IN
+          content: =System.Activity.Text
+          user: =If(IsBlank(System.User.PrincipalName), "anonymous", System.User.PrincipalName)
+          transactionId: =Global.AIGuardTx
+      output:
+        kind: SingleVariableOutputBinding
+        variable: init:Topic.Verdict
+
+    - kind: ConditionGroup
+      id: verdictIn_01
+      conditions:
+        - id: verdictIn_block
+          condition: =Topic.Verdict.action = "BLOCK" || IsBlank(Topic.Verdict.transactionId)
+          actions:
+            - kind: SendActivity
+              id: sendBlockIn_01
+              activity: "Your message was blocked by Zscaler AI Guard (transaction {Topic.Verdict.transactionId})."
+
+            - kind: CancelAllDialogs
+              id: cancelIn_01

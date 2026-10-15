@@ -1,0 +1,9 @@
+# Filled-in configuration and secrets — never commit
+config/demo.env
+config/secrets.env
+config/zscaler-root-ca.crt
+state/
+*.pem
+*.key
+__pycache__/
+.DS_Store

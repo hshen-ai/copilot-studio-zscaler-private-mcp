@@ -1,0 +1,27 @@
+Personal Work — Educational Use Only
+
+Copyright (c) 2026 Henry Shen
+
+NOT AN OFFICIAL ZSCALER SOLUTION. This repository is personal work by Henry Shen. It is not an official
+Zscaler solution, product or reference architecture, it does not represent Zscaler's official
+position, and it is not supported by Zscaler. It only shares one way to configure and consume Zscaler
+products together with Microsoft Copilot Studio, Microsoft Power Platform and Microsoft Azure. For
+supported configurations, refer to Zscaler's official documentation and your Zscaler support channels.
+
+SCOPE. These terms cover all material in this repository. Third-party software and services it uses
+or follows are listed in NOTICE.md and remain under their own terms.
+
+EDUCATIONAL USE ONLY — NOT FOR PRODUCTION. This material is shared solely for educational purposes:
+to illustrate an approach. It must not be used in production. You may read, copy and modify it to
+learn from it and to inform the design of your own implementation; any production system must be
+your own, separately designed, reviewed, tested and supported. It comes with no support or
+service-level commitment of any kind.
+
+NO WARRANTY. THE MATERIAL IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE,
+TITLE AND NON-INFRINGEMENT. IN NO EVENT SHALL THE AUTHOR OR ZSCALER BE LIABLE FOR ANY CLAIM, DAMAGES
+OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+CONNECTION WITH THE MATERIAL OR THE USE OR OTHER DEALINGS IN THE MATERIAL.
+
+Your use of Zscaler services remains governed by your agreement with Zscaler. Your use of Microsoft
+and Tavily services remains governed by your agreements with them.

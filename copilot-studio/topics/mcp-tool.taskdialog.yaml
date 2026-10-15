@@ -1,0 +1,14 @@
+# MCP tool "Private web search" — same shape as the MCP sample export in microsoft/CopilotStudioSamples.
+# {{CONNECTION_REFERENCE}} is the connection reference logical name created by 02-mcp-tool.py.
+kind: TaskDialog
+modelDisplayName: Private web search
+modelDescription: Searches the public Internet through the company's private web search MCP server. Use it for any question that needs current or external information.
+action:
+  kind: InvokeExternalAgentTaskAction
+  connectionReference: {{CONNECTION_REFERENCE}}
+  connectionProperties:
+    mode: Maker
+
+  operationDetails:
+    kind: ModelContextProtocolMetadata
+    operationId: InvokeServer

@@ -1,0 +1,20 @@
+# Topic "Hello World" — classic trigger phrases, fixed reply. Proves the agent itself answers.
+kind: AdaptiveDialog
+beginDialog:
+  kind: OnRecognizedIntent
+  id: main
+  intent:
+    displayName: Hello World
+    includeInOnSelectIntent: false
+    triggerQueries:
+      - hi
+      - hello
+      - hey
+
+  actions:
+    - kind: SendActivity
+      id: sendMessage_hw01
+      activity: Hello World
+
+    - kind: CancelAllDialogs
+      id: cancelAllDialogs_hw01
