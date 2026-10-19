@@ -1,0 +1,5 @@
+# Foundry SDK for foundry/04-05 and verify/09 (agents v2: prompt agents, conversations, responses).
+# Versions the reference lab was verified with, 2026-10-18.
+azure-ai-projects==2.9.0
+azure-identity==1.26.0
+openai==3.35.1

@@ -15,6 +15,10 @@ search, model knowledge and public-website knowledge are switched off and blocke
 
 `docs/architecture.pdf` walks through the flow on one diagram.
 
+The same MCP server also serves a **Microsoft Foundry agent** (Foundry Agent Service, agents v2): its tool
+calls are injected into a subnet of the same VNet, so they take the same private path and the same ZIA
+egress — see [Microsoft Foundry agent (optional)](#microsoft-foundry-agent-optional).
+
 > **Not an official Zscaler solution.** This is personal work by Henry Shen. It does not represent
 > Zscaler's official position and is not supported by Zscaler — it only shares one way to configure
 > and consume Zscaler products together with Microsoft Copilot Studio and Azure. For supported
@@ -41,6 +45,7 @@ shape.
 | `<ZIA_PROXY>` | `z**1.s*e.z**********e.net:80` | a ZIA Service Edge near your Azure region, or `gateway.<zscaler-cloud>.net:80` |
 | `<AIGUARD_POLICY_ID>` | `27xx` | AI Guard console > Policies |
 | `<TESTER_CLIENT_ID>` | `03d3xxxx-xxxx-xxxx-xxxx-xxxxxxxx934a` | printed by `copilot-studio/00-tester-app.sh` |
+| `<FOUNDRY_PROJECT_ENDPOINT>` | `https://h************y.services.ai.azure.com/api/projects/h***********y` | printed by `foundry/03-foundry.sh` (the template appends a 4-character suffix to `FOUNDRY_ACCOUNT_PREFIX` / `FOUNDRY_PROJECT_PREFIX`) |
 | `<TAVILY_API_KEY>` | `tvly-xxxx…` (shape only) | app.tavily.com > API Keys |
 | `<AIGUARD_API_KEY>` | `xxxx…` 43 characters (shape only) | AI Guard console > API keys |
 
@@ -53,8 +58,10 @@ mcp-server/      server.py (MCP over Streamable HTTP, Tavily, AI Guard tool scan
 power-platform/  01-dataverse.py, 02-managed-env-vnet.py, 03-payg-billing.py, 04-dlp-policy.py
 copilot-studio/  00-tester-app.sh, 01-create-agent.py, 02-mcp-tool.py, 03-aiguard.py,
                  topics/*.yaml — the exact agent components (topics, MCP tool, instructions)
-lib/             shared helpers (Dataverse, Power Platform admin and connector APIs)
-verify/          01–07: the validation steps, each printing PASS/FAIL with control rows
+foundry/         01-providers.sh, 02-network.sh, 03-foundry.sh, 04-mcp-connection.py, 05-agent.py,
+                 99-teardown.sh, requirements.txt — the optional Microsoft Foundry agent
+lib/             shared helpers (Dataverse, Power Platform admin and connector APIs; foundry.py)
+verify/          01–09: the validation steps, each printing PASS/FAIL with control rows
 docs/            architecture.html / architecture.pdf — the flow diagram and its explanation
 ```
 
@@ -272,6 +279,111 @@ a2adxxxx-… | started 2026-10-15T16:19:26Z | written 2026-10-15T16:50:11Z | AI 
 …
 ```
 
+## Microsoft Foundry agent (optional)
+
+A second agent on the **same** MCP server: a Foundry Agent Service **prompt agent** (`hello-world-foundry`)
+that greets the user and answers current-events questions only through the `web_search` tool. It uses
+Microsoft's network-secured **standard agent setup with VNet injection**: Foundry places its agent runtime
+(the *Data Proxy* that makes tool calls) into a delegated subnet of your VNet, so the MCP call stays on the
+private network and the search leaves through ZIA exactly as it does for Copilot Studio.
+
+```
+ you (Azure CLI sign-in) ──► Foundry project endpoint ──► prompt agent hello-world-foundry
+                                                            │ MCP tool call, x-api-key from a project connection
+ VNet <VNET_NAME>  +  <FOUNDRY_ADDRESS_SPACE>               ▼
+   foundry-agent  delegated to Microsoft.App/environments ◄── Foundry Data Proxy (networkInjections "agent")
+                    │ VNet routing + the private DNS zone of step 3 — no peering, no private endpoint
+   aca-infra        ▼ websearch-mcp: AI Guard (tool input) ─► Tavily via NAT GW ─► ZIA ─► AI Guard (results)
+   foundry-pe     private endpoints: Foundry, Cosmos DB, AI Search, Storage, Azure Monitor
+```
+
+**Requirements and constraints**
+- Foundry Agent Service in your region, quota for the chosen model
+  (`az cognitiveservices usage list -l <AZ_LOCATION>`), and **Owner** (or Contributor + Role Based Access
+  Administrator) on the subscription — the template assigns roles to the project's identity.
+- The **agent subnet** is delegated to `Microsoft.App/environments`, serves one Foundry account only, should
+  be a /24 (minimum /27), and lives in the same region as all Foundry resources.
+- Some regions — `switzerlandnorth`, `koreacentral`, `polandcentral`, `norwayeast` — accept only **class B/C**
+  ranges (172.16.0.0/12, 192.168.0.0/16) for the agent subnet. That is why `foundry/02-network.sh` adds
+  `192.168.60.0/22` next to the VNet's `10.60.0.0/16`.
+- The infrastructure is Microsoft's template **`19-private-network-agent-tools`** from foundry-samples, pinned
+  by `FOUNDRY_SAMPLES_COMMIT` — the template for *tools behind a VNet*. Some older Microsoft Learn pages still
+  say private MCP servers are not supported in a network-secured setup; the template and its tests are newer.
+- Private MCP needs the **agents v2** API (prompt agents, `conversations`, `responses`), not threads/runs.
+- With network injection the new Foundry portal does not open the project — use the SDK (these scripts).
+- Python 3.10+ with a virtual environment for the Foundry SDK; `git` (to fetch the template).
+
+**Setup** — after steps 1–4 above; the Copilot Studio steps 5–9 are not needed for this agent.
+```bash
+python3 -m venv .venv && .venv/bin/pip install -r foundry/requirements.txt
+foundry/01-providers.sh                        # resource providers (polls until Registered)
+foundry/02-network.sh                          # address space + foundry-agent / foundry-pe subnets
+foundry/03-foundry.sh                          # template 19: account, project, model, Cosmos DB, AI Search,
+                                               #   Storage, private endpoints, capability host (20-40 min)
+.venv/bin/python foundry/04-mcp-connection.py  # Foundry User role for you + the connection holding x-api-key
+.venv/bin/python foundry/05-agent.py           # the prompt agent and its MCP tool
+```
+`03-foundry.sh` changes the template in one place: the Foundry account allows public network access
+(Microsoft Entra ID only — local keys stay disabled), so the SDK can run from your machine. The agent's tool
+calls use the VNet regardless; keep the template's default and run the scripts from inside the VNet if your
+policy requires it.
+
+**Verify**
+
+| # | Command | Proves |
+|---|---|---|
+| 8 | `verify/08-foundry-infra.sh` | the account injects its agent runtime into `foundry-agent` (and the service association link proves it), capability host and model are ready, the private endpoints are approved, the MCP DNS zone is linked to the same VNet |
+| 9 | `.venv/bin/python verify/09-foundry-agent-e2e.py` | "hi" → `Hello World`; a current-events question → an `mcp_call` to `web_search` and an answer with URLs; the MCP server saw the call **from the agent subnet**, accepted the API key, AI Guard allowed the query and results, Tavily returned results |
+
+`verify/09` reads the MCP server's `X-Forwarded-For`: the leading hops are inside Foundry's Data Proxy, the
+**last** one is the address the Container Apps ingress saw — that one must be in `FOUNDRY_AGENT_SUBNET_PREFIX`.
+
+Output against the reference lab (masked, abridged):
+```
+== verify/08-foundry-infra.sh                (reference lab, 2026-10-19)
+PASS  network injection scenario agent
+PASS  injected into subnet foundry-agent
+PASS  Microsoft-managed network off false
+PASS  local (key) auth disabled true
+PASS  service association link on foundry-agent legionservicelink
+PASS  project capability host Succeeded
+PASS  model deployment gpt-4.1 Succeeded
+PASS  approved private endpoints (Foundry, Cosmos DB, AI Search, Storage, Azure Monitor) 5
+PASS  MCP private DNS zone linked to hwa-chn-vnet Completed
+INFO  Foundry publicNetworkAccess: Enabled (the agent's tool calls use the VNet either way)
+
+== verify/09-foundry-agent-e2e.py
+conversation: conv_0755xxxx…
+PASS  hi
+      -> Hello World! How can I help you today?
+PASS  mcp_call web_search
+      -> websearch.web_search {"query":"Zscaler announcement this week","max_results":5}
+PASS  answer cites URLs
+      -> This week, Zscaler made several major announcements:  1. Zscaler unveiled new product innovations to secure Agentic AI, … ([Source: Zscaler](https://www.zscaler.com/press/zscaler-unveils-new-product-innovations-secure-agentic-ai)) …
+INFO  accepted POST /mcp from 100.100.xxx.xxx,10.245.xxx.xxx,192.168.60.210
+INFO  accepted POST /mcp from 100.100.xxx.xxx,10.245.xxx.xxx,192.168.60.210
+…
+INFO  aiguard IN ALLOW tx=2dd3xxxx-… detectors=[]
+INFO  aiguard IN ALLOW tx=4a32xxxx-… detectors=[]
+…
+INFO  web_search query='Zscaler announcement this week' results=5 kept=5 dropped=0
+PASS  MCP calls from the Foundry agent subnet (192.168.60.0/24)
+      -> ['192.168.60.210']
+PASS  MCP API key accepted (project connection)
+PASS  AI Guard checked the tool input and results
+PASS  web_search returned results (Tavily through ZIA)
+```
+
+**Notes**
+- **AI Guard coverage.** The MCP server's checks of the tool input and of every result apply to this agent
+  unchanged. The Copilot Studio prompt and response topics have no Foundry counterpart in this repository:
+  the user's prompt and the agent's answer are **not** checked by AI Guard here.
+- **Costs.** The standard setup adds an AI Search service (standard tier), Cosmos DB, Storage, an Azure
+  Monitor private link scope with Application Insights, and the model deployment.
+- **Teardown.** `CONFIRM=delete-foundry foundry/99-teardown.sh`. The capability host pins a service
+  association link on `foundry-agent`; the script deletes the capability hosts, deletes **and purges** the
+  account, waits for the link to go (up to ~20 min), then removes the subnets and the address space.
+
 ## Security notes
 
 - **No public endpoint.** The Container Apps environment is `internal`; its name exists only in a
@@ -315,3 +427,9 @@ a2adxxxx-… | started 2026-10-15T16:19:26Z | written 2026-10-15T16:50:11Z | AI 
 | `LocationNotAvailableForResourceType` for the paired region | restricted region; leave `AZ_PAIRED_LOCATION` empty (see Security notes) |
 | `CannotUpdateApiDisplayName` / `405` updating a connector | connector updates are `PATCH` without `displayName`; `lib/connector.py` does this |
 | Anonymous Direct Line test returns `IntegratedAuthenticationNotSupportedInChannel` | expected for an agent that requires sign-in; test with `verify/04-agent-e2e.py` |
+| Foundry: `Role 'Azure AI User' doesn't exist` | the role is now **Foundry User**; `foundry/04-mcp-connection.py` accepts either name |
+| Foundry: `networkInjections` missing from `az cognitiveservices account show` | the CLI's api-version predates it; read the account with `az rest … ?api-version=2025-04-01-preview` (`verify/08` does) |
+| Foundry deployment: "Provided subnet must be of the proper address space … range of 172 or 192" | your region accepts only class B/C ranges for the agent subnet; put `FOUNDRY_ADDRESS_SPACE` and the subnet prefixes in 172.16.0.0/12 or 192.168.0.0/16 |
+| Foundry tool call fails with `TaskCanceledException` | known intermittent Data Proxy routing issue; `verify/09` retries — re-run it |
+| Foundry tool call fails with `424 Failed Dependency` | the Data Proxy cannot resolve the MCP server's name: check the private DNS zone's link to the VNet (`verify/08`) |
+| `InUseSubnetCannotBeDeleted` / `legionservicelink` on `foundry-agent` | the Foundry account was deleted before its capability host, or not purged; purge it and wait ~20 min (`foundry/99-teardown.sh` does it in order) |
