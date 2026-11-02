@@ -43,6 +43,9 @@ shape.
 | `<MCP_FQDN>` | `websearch-mcp.a**********y-c******1.switzerlandnorth.azurecontainerapps.io` | printed by `azure/02-mcp-server.sh` (private DNS only) |
 | `<NAT_PUBLIC_IP>` | `20.203.xxx.xxx` | printed by `azure/01-network.sh` — register it in ZIA |
 | `<ZIA_PROXY>` | `z**1.s*e.z**********e.net:80` | a ZIA Service Edge near your Azure region, or `gateway.<zscaler-cloud>.net:80` |
+| `<ZIA_EGRESS_SCOPE>` | `api://a015xxxx-xxxx-xxxx-xxxx-xxxxxxxxc4d6/zia:egress` | Entra admin center > App registrations > (ZIA API app) |
+| `<MCP_CLIENT_ID>` | `7f46xxxx-xxxx-xxxx-xxxx-xxxxxxxx5edb` | Entra admin center > App registrations > (MCP service app) |
+| `<CONNECTOR_CLIENT_ID>` | `3b12xxxx-xxxx-xxxx-xxxx-xxxxxxxx81c2` | Entra admin center > App registrations > (connector client app) |
 | `<AIGUARD_POLICY_ID>` | `27xx` | AI Guard console > Policies |
 | `<TESTER_CLIENT_ID>` | `03d3xxxx-xxxx-xxxx-xxxx-xxxxxxxx934a` | printed by `copilot-studio/00-tester-app.sh` |
 | `<FOUNDRY_PROJECT_ENDPOINT>` | `https://h************y.services.ai.azure.com/api/projects/h***********y` | printed by `foundry/03-foundry.sh` (the template appends a 4-character suffix to `FOUNDRY_ACCOUNT_PREFIX` / `FOUNDRY_PROJECT_PREFIX`) |
@@ -56,12 +59,13 @@ config/          demo.env.example (every parameter, commented), secrets.env.exam
 azure/           01-network.sh, 02-mcp-server.sh, 03-egress-lockdown.sh
 mcp-server/      server.py (MCP over Streamable HTTP, Tavily, AI Guard tool scans), Dockerfile
 power-platform/  01-dataverse.py, 02-managed-env-vnet.py, 03-payg-billing.py, 04-dlp-policy.py
-copilot-studio/  00-tester-app.sh, 01-create-agent.py, 02-mcp-tool.py, 03-aiguard.py,
+copilot-studio/  00-tester-app.sh, 01-create-agent.py, 02-mcp-tool.py, 02b-mcp-tool-entra.py,
+                 02c-mcp-tool-end-user.py, 03-aiguard.py,
                  topics/*.yaml — the exact agent components (topics, MCP tool, instructions)
 foundry/         01-providers.sh, 02-network.sh, 03-foundry.sh, 04-mcp-connection.py, 05-agent.py,
                  99-teardown.sh, requirements.txt — the optional Microsoft Foundry agent
 lib/             shared helpers (Dataverse, Power Platform admin and connector APIs; foundry.py)
-verify/          01–09: the validation steps, each printing PASS/FAIL with control rows
+verify/          01–10: the validation steps, each printing PASS/FAIL with control rows
 docs/            architecture.html / architecture.pdf — the flow diagram and its explanation
 ```
 
@@ -112,7 +116,12 @@ All AI Guard checks **fail closed**: no verdict means no answer.
 - Microsoft Copilot Studio with capacity for generative orchestration: a Copilot Studio licence,
   prepaid capacity, or a pay-as-you-go billing policy on an Azure subscription (step 5c).
 - A Power Platform environment with Dataverse, which can be made a **Managed Environment** (required for
-  virtual-network support).
+  virtual-network support). **Prefer a dedicated Production environment over Default:** When a tenant's
+  Default environment has disaster recovery set to Full, linking a single-region VNet policy can fail
+  (`SingleRegionVNetWithDisasterRecovery`), or cause connector calls to fail permanently with HTTP 503
+  `Container allocated - ...ExtnCtrDelegatedSvc. Please re-try`. Creating a new Production environment
+  with the VNet enterprise policy linked *before* Dataverse is provisioned (using top-level `"macroRegion":"EMEA"`
+  and no `"location"` via BAP API) avoids this.
 - **System Administrator** in that environment's Dataverse. A tenant or Power Platform administrator is
   not automatically one — self-elevate in the Power Platform admin center (Environments > your
   environment > Membership > Add me).
@@ -177,6 +186,58 @@ python3 copilot-studio/01-create-agent.py         # classic agent + "Hello World
 python3 copilot-studio/02-mcp-tool.py             # MCP connector, tool, instructions, orchestration on
 ```
 
+### 6c. Per-user ZIA egress (optional)
+
+By default, the MCP server authenticates incoming calls with an API key, and ZIA egress is attributed to
+the NAT gateway's Location. In **per-user ZIA egress** mode, the agent passes the signed-in user's
+delegated Entra ID Bearer token to the MCP server. The server passes `user=<upn>` on AI Guard tool scans,
+exchanges the token On-Behalf-Of (OBO) for a scoped ZIA token (`ZIA_EGRESS_SCOPE`), and attaches it as
+`Proxy-Authorization: Bearer` on the ZIA proxy CONNECT. Requests without a valid user token fail closed.
+
+**Entra ID app registrations (two-app topology):**
+1. **MCP service app** (`MCP_CLIENT_ID`): represents the container app. Exposes delegated scope `mcp.access`
+   (`api://<MCP_CLIENT_ID>/mcp.access`), and lists the connector client app in `knownClientApplications`.
+2. **Connector client app** (`CONNECTOR_CLIENT_ID`): represents Power Platform's custom connector. Has a client
+   secret (`CONNECTOR_CLIENT_SECRET_FILE`), web redirect URI set to the connector's per-connector redirect URL
+   (`https://global.consent.azure-apim.net/redirect/...`), delegated permission `mcp.access` on the service app
+   with admin consent granted, and pre-authorizes application `fe053c5f-3692-4f14-aef2-ee34fc081cae` (Azure API
+   Connections) on its own `access_as_user` scope.
+3. **ZIA egress app:** exposes the target scope `api://<zia-egress app id>/zia:egress` (`ZIA_EGRESS_SCOPE`),
+   configured as the audience in ZIdentity.
+
+**ZIA prerequisites:**
+- **Location & Authentication:** In the ZIA Admin Portal (Administration > Location Management), edit the
+  Location for the NAT gateway IP: enable **Enforce Authentication** and **Enable Proxy JWT Authentication**,
+  set **IP Surrogate** to **OFF**, and **Activate** (in the lab, activating twice was required to take effect).
+- **ZIdentity Token Validator:** Add an external token validator with Issuer
+  `https://login.microsoftonline.com/<TENANT_ID>/v2.0`, Subject Claim `email`, and Audience equal to the
+  ZIA egress app ID.
+- **ZIA User:** Provision a ZIA user whose username matches the user's primary Entra email (`user@company.com`).
+  *Note:* ZIA cannot verify default `*.onmicrosoft.com` domains; use a custom domain verified in M365 and set as
+  primary SMTP.
+- **JWT Authentication Exemptions:** In Internet Access > Advanced Settings > **JWT Authentication Exemptions**,
+  create a custom URL category containing `login.microsoftonline.com` (and `login.microsoft.com`) and add it to
+  exempted URL categories, along with exempted Cloud Applications **Microsoft Azure AD (MSAZUREAD)** and **Okta**.
+  Without this exemption, the MCP server's OBO token exchange to Entra ID is challenged with 407 (`token exchange
+  unreachable: ProxyError`). *Note:* Per help.zscaler.com, JWT Authentication Exemptions may need to be enabled
+  by your Zscaler account team.
+
+**Container App configuration & tool switch:**
+Set environment variables on the Container App (`azure/02-mcp-server.sh` or `az containerapp update`):
+- `MCP_AUTH=entra`
+- `MCP_CLIENT_ID=<service app id>`
+- `MCP_CLIENT_SECRET=secretref:mcp-client-secret`
+- `ZIA_EGRESS_MODE=proxy-caller`
+- `ZIA_EGRESS_SCOPE=api://<zia-egress app id>/zia:egress`
+
+Switch the Copilot Studio tool to the end-user Entra connector:
+```bash
+CONNECTOR_CLIENT_ID=<appId> CONNECTOR_CLIENT_SECRET_FILE=state/connector-client-secret \
+    python3 copilot-studio/02c-mcp-tool-end-user.py
+```
+This updates the MCP tool component to `connectionProperties.mode: Invoker`. On first use, the user sees ONE
+"Allow" connection consent card; subsequent turns connect silently (including on the Direct-to-Engine API).
+
 ### 7. Zscaler AI Guard
 ```bash
 python3 copilot-studio/03-aiguard.py              # AI Guard connector (direct), prompt + response topics
@@ -201,12 +262,13 @@ could be a path that was never restricted.
 | # | Command | Proves |
 |---|---|---|
 | 1 | `verify/01-private-mcp.sh` | MCP server has no public DNS and no public reachability; inside the VNet it answers, and refuses calls without the API key |
-| 2 | `verify/02-egress-only-via-zia.sh` | direct Internet from the MCP subnet is blocked; the same request through ZIA succeeds; the tool returns results |
+| 2 | `verify/02-egress-only-via-zia.sh` | direct Internet from the MCP subnet is blocked; through ZIA: in `proxy` mode requests succeed; in `proxy-caller` mode no-token and bogus-bearer CONNECTs return 407 (`Proxy-Authenticate: Bearer`), and raw API key calls are blocked fail-closed (`no caller token`) |
 | 3 | `python3 verify/03-aiguard-das.py --user you@example.com` | AI Guard allows a benign prompt, blocks an injection, accepts `user` + a UUID `transactionId` through a match rule, rejects a non-UUID one; reports whether the policy has response detectors |
-| 4 | `python3 verify/04-agent-e2e.py` | signed in as a real user: "hi" → `Hello World`; a web question → answer with URLs; an injection → blocked by AI Guard |
+| 4 | `python3 verify/04-agent-e2e.py` | signed in as a real user (handles `--allow-consent` card): "hi" → `Hello World`; a web question → answer with URLs (MCP logs show `caller=<user> egress=proxy-caller`); an injection → blocked by AI Guard |
 | 5 | `python3 verify/05-agent-config.py` | the configuration that makes the MCP server the only path: auth, publish status, orchestration on, knowledge and browsing off, Managed Environment, VNet link, pay-as-you-go, data policy |
 | 6 | `verify/06-mcp-caller-subnet.sh` | Copilot Studio's MCP calls arrived from the delegated subnet |
 | 7 | `python3 verify/07-transcripts.py` | the conversation transcripts (needs the Bot Transcript Viewer role) |
+| 10 | `verify/10-zia-jwt-exemption.sh` | inside VNet: unauthenticated CONNECT to `login.microsoftonline.com` succeeds (200, exempt); CONNECT to `api.tavily.com` is challenged (407) |
 
 Also check by hand:
 - **AI Guard console:** the transactions of check 3 and check 4 show your username, with `IN` and
@@ -395,9 +457,14 @@ PASS  web_search returned results (Tavily through ZIA)
 - **The response check needs response detectors.** A policy without detectors for `OUT` returns
   `action: null` — the response topic then always passes. Configure output detectors (secrets, PII …)
   in the AI Guard policy your match rule selects.
-- **Identity.** The AI Guard topics read `System.User.PrincipalName`, so the agent must require Microsoft
-  sign-in; with "No authentication" those topics do not publish. The MCP server does not receive the
-  user's identity: its tool scans run under the server's own key.
+- **Identity.** The AI Guard topics read `System.User.PrincipalName`, so the agent requires Microsoft
+  sign-in; with "No authentication" those topics do not publish. In the default setup (step 6), the MCP
+  server validates an API key (`x-api-key`) and tool scans run under the server's own key. With optional
+  per-user ZIA egress (step 6c), the MCP server validates an Entra ID Bearer token (`MCP_AUTH=entra`,
+  delegated scope `mcp.access`), passes `user=<upn>` to AI Guard DAS on every tool scan, and performs an
+  On-Behalf-Of (OBO) token exchange for a ZIA egress token (`ZIA_EGRESS_MODE=proxy-caller`) sent as
+  `Proxy-Authorization: Bearer` on the ZIA proxy CONNECT. Callers without a valid user token (e.g. raw
+  `x-api-key` callers) are blocked fail-closed with no fallback identity.
 - **Secrets** live in `config/secrets.env` (mode 600, git-ignored), Container Apps secrets, and the
   Power Platform connections — never in images, logs or this repository.
 - **Data policy.** The policy is scoped to this one environment. Blocking public-website knowledge and
@@ -420,6 +487,10 @@ PASS  web_search returned results (Tavily through ZIA)
 | `IdentifierNotRecognized … System.User.PrincipalName` | the agent was switched to "No authentication"; the AI Guard topics need Microsoft sign-in |
 | Every answer is "withheld by Zscaler AI Guard" | the response gate tests `<> "ALLOW"`; a policy without OUT detectors returns `null` — gate on `= "BLOCK"` as in the template |
 | AI Guard `500` "UUID has to be represented by standard 36-char representation" | `transactionId` must be a UUID |
+| `token exchange unreachable: ProxyError` (OBO fails `407`) | ZIA JWT Authentication Exemptions missing `login.microsoftonline.com` or `MSAZUREAD`; add custom URL category and exempted app under Advanced Settings (verify with `verify/10`) |
+| `407 Proxy Authentication Required` for all users | ZIdentity Token Validator misconfigured (audience != ZIA egress app, issuer, or subject claim `email`), or user missing in ZIA (primary SMTP domain must match verified ZIA domain) |
+| `200` for a bogus bearer token (auth not enforced) | ZIA changes not yet active or IP Surrogate enabled; set IP Surrogate to OFF, Enable Proxy JWT Authentication to ON, and Activate in ZIA (activate twice if needed) |
+| Connector calls fail `503 Container allocated - ...ExtnCtrDelegatedSvc` | tenant Default environment disaster recovery is Full (`SingleRegionVNetWithDisasterRecovery`); use a dedicated Production environment linked before Dataverse provisioning |
 | ZIA answers `403` to every CONNECT | the NAT IP is not (yet) an active Static IP / Location in ZIA; wait ~15 min after Activate |
 | MCP container crash-loops: `No module named 'mcp.server.fastmcp'` | MCP Python SDK 2.x renamed FastMCP; keep `mcp<2` |
 | `403` reading conversation transcripts | your user lacks the **Bot Transcript Viewer** security role |

@@ -23,7 +23,7 @@ if [[ -z "$ACR" ]]; then
   az acr create -g "$RG" -n "$ACR" -l "$AZ_LOCATION" --sku Basic --admin-enabled false -o none
 fi
 BUILD="$(mktemp -d)"; trap 'rm -rf "$BUILD"' EXIT
-cp "$ROOT"/mcp-server/{server.py,Dockerfile,requirements.txt} "$BUILD/"
+cp "$ROOT"/mcp-server/{server.py,auth.py,egress.py,Dockerfile,requirements.txt} "$BUILD/"
 cp "$ROOT/$ZSCALER_ROOT_CA" "$BUILD/zscaler-root-ca.crt"
 az acr build -r "$ACR" -t "websearch-mcp:$TAG" "$BUILD" --no-logs -o none
 IMAGE="$ACR.azurecr.io/websearch-mcp:$TAG"
@@ -38,10 +38,16 @@ DOMAIN=$(az containerapp env show -g "$RG" -n "$ACA_ENV" --query properties.defa
 SIP=$(az containerapp env show -g "$RG" -n "$ACA_ENV" --query properties.staticIp -o tsv)
 
 # --- the app. Ingress "external" = reachable from the VNet; the environment itself is internal-only.
-SECRETS=("mcp-api-key=$MCP_API_KEY" "tavily-api-key=$TAVILY_API_KEY" "aiguard-api-key=$AIGUARD_API_KEY")
+SECRETS=("mcp-api-key=$MCP_API_KEY" "tavily-api-key=$TAVILY_API_KEY" "aiguard-api-key=$AIGUARD_API_KEY"
+         "mcp-client-secret=$MCP_CLIENT_SECRET")
 ENVV=(MCP_API_KEY=secretref:mcp-api-key TAVILY_API_KEY=secretref:tavily-api-key AIGUARD_API_KEY=secretref:aiguard-api-key
+      MCP_CLIENT_SECRET=secretref:mcp-client-secret
       "AIGUARD_POLICY_ID=$AIGUARD_POLICY_ID" "AIGUARD_URL=$AIGUARD_BASE/v1/detection/execute-policy"
-      "HTTPS_PROXY=http://$ZIA_PROXY" "HTTP_PROXY=http://$ZIA_PROXY" "NO_PROXY=localhost,127.0.0.1")
+      "HTTPS_PROXY=http://$ZIA_PROXY" "HTTP_PROXY=http://$ZIA_PROXY" "NO_PROXY=localhost,127.0.0.1"
+      "MCP_AUTH=${MCP_AUTH:-entra}" "ENTRA_TENANT_ID=$TENANT_ID"
+      "MCP_AUDIENCE=$MCP_CLIENT_ID,api://$MCP_CLIENT_ID" "MCP_REQUIRED_SCOPES=mcp.access"
+      "MCP_CLIENT_ID=$MCP_CLIENT_ID" "ZIA_EGRESS_MODE=${ZIA_EGRESS_MODE:-proxy}"
+      "ZIA_PROXY=$ZIA_PROXY" "ZIA_EGRESS_SCOPE=$ZIA_EGRESS_SCOPE")
 if ! az containerapp show -g "$RG" -n "$APP" -o none 2>/dev/null; then
   az containerapp create -g "$RG" -n "$APP" --environment "$ACA_ENV" --image "$IMAGE" \
     --registry-server "$ACR.azurecr.io" --registry-identity system \

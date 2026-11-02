@@ -7,7 +7,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY zscaler-root-ca.crt /tmp/zscaler-root-ca.crt
 RUN cat "$(python -c 'import certifi; print(certifi.where())')" /tmp/zscaler-root-ca.crt > /etc/ssl/mcp-ca-bundle.pem
 ENV SSL_CERT_FILE=/etc/ssl/mcp-ca-bundle.pem PYTHONUNBUFFERED=1
-COPY server.py .
+COPY server.py auth.py egress.py .
 EXPOSE 8080
 USER 65534
 CMD ["python", "server.py"]

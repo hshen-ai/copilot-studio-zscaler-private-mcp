@@ -25,11 +25,50 @@ def find_connector(display_name):
     return next((a for a in (b or {}).get("value", []) if a["properties"].get("displayName") == display_name), None)
 
 
-def upsert_connector(display_name, description, swagger, service_url):
+def aad_oauth_param(client_id, client_secret, resource_uri, tenant_id):
+    return {
+        "token": {
+            "type": "oauthSetting",
+            "oAuthSettings": {
+                "identityProvider": "aad",
+                "clientId": client_id,
+                "clientSecret": client_secret,
+                "scopes": [],
+                "redirectMode": "GlobalPerConnector",
+                "properties": {
+                    "IsFirstParty": "False",
+                    "AzureActiveDirectoryResourceId": resource_uri,
+                },
+                "customParameters": {
+                    "loginUri": {"value": "https://login.microsoftonline.com"},
+                    "tenantId": {"value": tenant_id},
+                    "resourceUri": {"value": resource_uri},
+                    "enableOnbehalfOfLogin": {"value": "true"},
+                },
+            },
+            "uiDefinition": {
+                "displayName": "Azure Active Directory",
+                "description": "Sign in using Azure Active Directory",
+                "tooltip": "Provide your Azure AD credentials",
+                "constraints": {"required": "true"},
+            },
+        }
+    }
+
+
+def get_connector(api_name):
+    s, _, b = bap("GET", f"{PA}/apis/{api_name}?api-version=2016-11-01&$filter=environment eq '{ENV_ID}'")
+    if s >= 300:
+        raise SystemExit(f"get connector '{api_name}' failed: {s} {b}")
+    return b
+
+
+def upsert_connector(display_name, description, swagger, service_url, connection_parameters=None):
     api = find_connector(display_name)
+    conn_params = connection_parameters if connection_parameters is not None else API_KEY_PARAM
     props = {"description": description, "iconBrandColor": "#2160e0", "capabilities": [], "isCustomApi": True,
              "openApiDefinition": swagger, "backendService": {"serviceUrl": service_url},
-             "connectionParameters": API_KEY_PARAM, "environment": ENV_REF}
+             "connectionParameters": conn_params, "environment": ENV_REF}
     if api is None:
         s, _, b = bap("POST", f"{PA}/apis?api-version=2016-11-01&$filter=environment eq '{ENV_ID}'",
                       {"properties": {"displayName": display_name, **props}})

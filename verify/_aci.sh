@@ -19,7 +19,7 @@ run_in_vnet() {
   az container delete -g "$RG" -n "$name" --yes -o none 2>/dev/null || true
   az container create -g "$RG" -n "$name" --image "$image" --os-type Linux --cpu 1 --memory 1 \
     --vnet "$VNET_NAME" --subnet test --restart-policy Never --assign-identity "$mi" --acr-identity "$mi" \
-    --environment-variables "MCP_FQDN=$(cat "$STATE/mcp_fqdn")" "ZIA_PROXY=$ZIA_PROXY" \
+    --environment-variables "MCP_FQDN=$(cat "$STATE/mcp_fqdn")" "ZIA_PROXY=$ZIA_PROXY" "ZIA_EGRESS_MODE=${ZIA_EGRESS_MODE:-proxy}" \
     --secure-environment-variables "MCP_API_KEY=$(cat "$STATE/mcp_api_key")" \
     --command-line "python -c \"$(sed 's/"/\\"/g' "$code")\"" -o none
   for _ in $(seq 1 36); do
