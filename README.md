@@ -457,7 +457,7 @@ PASS  web_search returned results (Tavily through ZIA)
 - **The response check needs response detectors.** A policy without detectors for `OUT` returns
   `action: null` — the response topic then always passes. Configure output detectors (secrets, PII …)
   in the AI Guard policy your match rule selects.
-- **Identity.** The AI Guard topics read `System.User.PrincipalName`, so the agent requires Microsoft
+- **Identity.** The AI Guard topics read `System.User.Email` (the ZIA username; `PrincipalName` as fallback), so the agent requires Microsoft
   sign-in; with "No authentication" those topics do not publish. In the default setup (step 6), the MCP
   server validates an API key (`x-api-key`) and tool scans run under the server's own key. With optional
   per-user ZIA egress (step 6c), the MCP server validates an Entra ID Bearer token (`MCP_AUTH=entra`,

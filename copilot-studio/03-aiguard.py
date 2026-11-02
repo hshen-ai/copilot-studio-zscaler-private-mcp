@@ -11,7 +11,7 @@ Copilot Studio through a custom connector to the AI Guard Detection-as-a-Service
   topics: "AI Guard - prompt" (OnActivity, IN) and "AI Guard - response" (OnGeneratedResponse, OUT)
 
 Because the environment is VNet-linked, these connector calls leave from the delegated subnet too.
-Requires the agent to use Microsoft authentication (System.User.PrincipalName). Idempotent.
+Requires the agent to use Microsoft authentication (System.User.Email, falling back to PrincipalName). Idempotent.
 
     python3 copilot-studio/03-aiguard.py
 """

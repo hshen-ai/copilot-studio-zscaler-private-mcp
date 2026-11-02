@@ -108,7 +108,7 @@ async def web_search(query: str, max_results: int = 5) -> dict:
     """Search the public Internet and return the top results (title, url, snippet).
     Use this for any question about current events or anything not already known."""
     caller = CALLER.get()
-    user = (caller.claims.get("upn") or caller.identity) if caller else None
+    user = caller.identity if caller else None  # email claim first: the same name ZIA and the topics use
     try:
         client = await EGRESS.client(caller)
     except egress.EgressDenied as e:

@@ -22,7 +22,7 @@ beginDialog:
         binding:
           direction: OUT
           content: =System.Response.FormattedText
-          user: =If(IsBlank(System.User.PrincipalName), "anonymous", System.User.PrincipalName)
+          user: =If(IsBlank(System.User.Email), If(IsBlank(System.User.PrincipalName), "anonymous", System.User.PrincipalName), System.User.Email)
           transactionId: =Global.AIGuardTx
       output:
         kind: SingleVariableOutputBinding

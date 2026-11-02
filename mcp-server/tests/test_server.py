@@ -235,7 +235,7 @@ def test_case_6_mode_proxy_with_api_key(monkeypatch, proxy):
         assert "proxy-authorization" not in connect_headers
 
 
-# Case 7: AI Guard body carries "user" = token upn when bearer, and no "user" with x-api-key
+# Case 7: AI Guard body carries "user" = token email (the ZIA username) when bearer, none with x-api-key
 def test_case_7_aiguard_user_field(monkeypatch, proxy, keypair, make_token):
     env = {
         **BASE_ENV,
@@ -263,7 +263,7 @@ def test_case_7_aiguard_user_field(monkeypatch, proxy, keypair, make_token):
         client.post("/mcp", headers=headers_bearer, json=init_payload())
         client.post("/mcp", headers=headers_bearer, json=call_payload("query 1"))
         assert len(captured_calls) == 1
-        assert captured_calls[0]["user"] == "user_upn@corp.com"
+        assert captured_calls[0]["user"] == "other@corp.com"
 
         # 2. API key
         captured_calls.clear()
