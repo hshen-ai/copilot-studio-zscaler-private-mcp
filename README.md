@@ -56,8 +56,9 @@ shape.
 
 ```
 config/          demo.env.example (every parameter, commented), secrets.env.example (shape only)
-azure/           01-network.sh, 02-mcp-server.sh, 03-egress-lockdown.sh
+azure/           01-network.sh, 02-mcp-server.sh, 03-egress-lockdown.sh, 04-mcp-jumphost.sh
 mcp-server/      server.py (MCP over Streamable HTTP, Tavily, AI Guard tool scans), Dockerfile
+mcp-jumphost/    jumphost.py (universal MCP relay with per-user ZIA egress attribution), Dockerfile
 power-platform/  01-dataverse.py, 02-managed-env-vnet.py, 03-payg-billing.py, 04-dlp-policy.py
 copilot-studio/  00-tester-app.sh, 01-create-agent.py, 02-mcp-tool.py, 02b-mcp-tool-entra.py,
                  02c-mcp-tool-end-user.py, 03-aiguard.py,
