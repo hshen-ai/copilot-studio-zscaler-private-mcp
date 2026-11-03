@@ -1,0 +1,6 @@
+starlette
+httpx>=0.27
+uvicorn>=0.30
+pyjwt[crypto]>=2.8
+certifi
+mcp>=1.30,<2
